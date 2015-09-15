@@ -1,7 +1,7 @@
 /**********************************************************************
  * pHSensor library
  * Arduino library to control a pH sensor usin an analog adapter
- * version 0.2 BETA 14/09/2015
+ * version 0.1 ALPHA 15/09/2015
  * Author: Jaime García  @peninquen
  * Licence: Apache License Version 2.0.
  *
