@@ -2,7 +2,7 @@
 /* pHSensor library
 /* Arduino library to control a pH sensor using an analog adapter
 /* the adapter signal must be conected to one of the analog pins
-/* version 0.1 ALPHA 14/09/2015 
+/* version 0.2 ALPHA 16/09/2015 
 /* Author: Jaime García  @peninquen
 /* License:  Apache License Version 2.0.
 /*
