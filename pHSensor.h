@@ -1,8 +1,8 @@
 /**********************************************************************/
 /* pHSensor library
-/* Arduino library to control a pH sensor usin an analog adapter
-/* the adapter signal must be conected to one of analog pins
-/* version 0.1 ALPHA 15/09/2015 
+/* Arduino library to control a pH sensor using an analog adapter
+/* the adapter signal must be conected to one of the analog pins
+/* version 0.1 ALPHA 14/09/2015 
 /* Author: Jaime García  @peninquen
 /* License:  Apache License Version 2.0.
 /*
@@ -15,7 +15,12 @@
 #include <EEPROM.h>
 
 #define BUFFERSIZE 10
-#define MAGIC_NUMBER 123 // bye number to check valid values in EEPROM
+#define MAGIC_NUMBER 1234 // bye number to check valid values in EEPROM
+struct calibration {
+  short magicNumber;
+  short reference;
+  short rawData;
+};
 
 
 class pHSensor {
@@ -24,19 +29,16 @@ class pHSensor {
     pHSensor();
 
     // Setup instance variables
-    void begin(int pHPin, unsigned int interval, byte calAddress, float temperature);
+    void begin(int pHPin, unsigned int interval, byte calAddress);
 
     // calibrate and write data on EEPROM
-    void calibrate(byte calAddress);
-
-    // write temperature value
-    void writeTempC(float temperature);
+    calibration &calibrate(byte calAddress, calibration &cal);
 
     // check interval and update data, interval must be greater than loop cycle
-    void refreshData();
+    boolean refreshData();
 
     // read _counter value in defined units
-    float read();
+    short read();
 
     // is a new data available?
     boolean available();
@@ -48,12 +50,11 @@ class pHSensor {
     unsigned int _interval;            // time [miliseconds] between adquisition data
     unsigned int _rawData[BUFFERSIZE]; // raw data from ADC
     unsigned int _index;
-    float _temperature;                // temperature adjust??
-    float _calRef1;                    // Calibration reference nº 1
-    unsigned int _calRaw1;             // Calibration raw value nº 1
-    float _calRef2;                    // Calibration reference nº 2
-    unsigned int _calRaw2;             // Calibration reference nº 2
-    float _offset;
+    calibration _cal1;                    // Calibration reference nº 1
+    //short _calRaw1;             // Calibration raw value nº 1
+    calibration _cal2; //short _calRef2;                    // Calibration reference nº 2
+    //short _calRaw2;             // Calibration reference nº 2
+    short _offset;
     float _slope;
 };
 
