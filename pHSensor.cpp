@@ -1,7 +1,7 @@
 /**********************************************************************
  * pHSensor library
  * Arduino library to control a pH sensor usin an analog adapter
- * version 0.2 BETA 15/09/2015
+ * version 0.2 ALPHA 16/09/2015
  * Author: Jaime García  @peninquen
  * License: Apache License Version 2.0.
  *
@@ -71,6 +71,10 @@ calibration &pHSensor::calibrate(byte calAddress, calibration &cal) {
   }
   StDev = sqrt(Dev >> 6);
   rawStDev = sqrt(rawDev / BUFFERSIZE / 64);
+  Serial.print("filtered standard deviation:");
+  Serial.println(StDev);
+  Serial.print("un-filtered standard deviation:");
+  Serial.println(rawStDev);
 }
 
 /***************************************************************************/
