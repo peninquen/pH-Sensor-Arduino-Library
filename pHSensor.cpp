@@ -1,19 +1,13 @@
 /**********************************************************************
  * pHSensor library
  * Arduino library to control a pH sensor usin an analog adapter
- * version 0.1 ALPHA 15/09/2015
+ * version 0.2 BETA 15/09/2015
  * Author: Jaime García  @peninquen
- * Licence: Apache License Version 2.0.
+ * License: Apache License Version 2.0.
  *
  ********************************************************************
   */
 #include "pHSensor.h"
-
-struct CalibrationData {
-  byte magicNumber;
-  float calRef;
-  unsigned int calRaw;
-} calibrationData;
 
 /***************************************************************************/
 /*constructor*/
@@ -24,54 +18,64 @@ pHSensor::pHSensor() {
 /***************************************************************************/
 /*Setup variables and initialize interrupts*/
 
-void pHSensor::begin(int pHPin, unsigned int interval, byte calAddress, float temperature) {
+void pHSensor::begin(int pHPin, unsigned int interval, byte calAddress) {
   _pHPin = pHPin;
+  pinMode(_pHPin, INPUT);
   _interval = interval;
-  _temperature = temperature;
   _flag = false;
   for (int i = 0; i < BUFFERSIZE; i++) _rawData[i] = 0;
   _index = 0;
-  CalibrationData calData;
-  EEPROM.get(calAddress, calData);
-  if (calData.magicNumber == MAGIC_NUMBER) {
-    _calRef1 = calData.calRef;
-    _calRaw1 = calData.calRaw;
-  }
-  else calibrate(calAddress);
-  calAddress += sizeof(calData);
-  EEPROM.get(calAddress, calData);
-  if (calData.magicNumber == MAGIC_NUMBER) {
-    _calRef2 = calData.calRef;
-    _calRaw2 = calData.calRaw;
-  }
-  else calibrate(calAddress);
-  _offset = _calRef1; //7.00
-  _slope = (_calRef2 - _calRef1) / (_calRaw2 - _calRaw1)  ;
+  EEPROM.get(calAddress, _cal1);
+  if (_cal1.magicNumber != MAGIC_NUMBER) calibrate(calAddress, _cal1);
+  calAddress += sizeof(calibration);
+  EEPROM.get(calAddress, _cal2);
+  if (_cal2.magicNumber != MAGIC_NUMBER) calibrate(calAddress, _cal2);
+  _offset = _cal1.reference; //7.00
+  _slope = (float)(_cal2.reference - _cal1.reference) / (_cal2.rawData - _cal1.rawData)  ;
   _processTime = millis();       // start timer
 
   Serial.print("pH Pin:"); Serial.print(_pHPin);
   Serial.print("  EEPROM address:"); Serial.println(calAddress);
-  pinMode(pHPin, INPUT); // conect external pull up resistor 10 Kohm on input pin
 }
 
 /**************************************************************************/
 /*calibrate sensor*/
-void pHSensor::calibrate(byte calAddress) {
+calibration &pHSensor::calibrate(byte calAddress, calibration &cal) {
+  int i;
+  unsigned short data;
+  unsigned short StDev = 0;    //standard deviation of filtered data
+  unsigned short rawStDev = 0; //standard deviation of unfiltered data
+  unsigned long Dev = 0;       // squared deviation of filtered data
+  unsigned long rawDev = 0;    // squared deviation of unfiltered data
 
+  Serial.print("intro ref:");
+  cal.reference = Serial.parseInt();
+  for (int count = 64; count; --count) {
+    while (!available()); // wait until data[] is full
+    data += read();
+  }
+  cal.rawData = data >> 6;  //average value of 64 median values
+  Serial.print("ADC value:");
+  Serial.println(cal.rawData);
+
+  for (int count = 64; count; --count) {
+    while (!_flag) {
+      while (!refreshData());
+      if (_index)
+        i = BUFFERSIZE;
+      else
+        i = _index - 1;
+      rawDev += (data - _rawData[i]) ^ 2;
+    }
+    Dev += (data - read()) ^ 2;
+  }
+  StDev = sqrt(Dev >> 6);
+  rawStDev = sqrt(rawDev / BUFFERSIZE / 64);
 }
 
-/*****************************************************************************/
-/* write temperature value */
-    void pHSensor::writeTempC(float temperature){
-      _temperature = temperature;
-    }
-
-
-
-
 /***************************************************************************/
-/*check interval and update data, interval must be greater than loop cycle*/
-void pHSensor::refreshData() {
+/*check interval and read data, interval must be greater than loop cycle*/
+boolean pHSensor::refreshData() {
   unsigned long nowTime = millis();
   if (nowTime - _processTime >= _interval) {
     _rawData[_index] = analogRead(_pHPin);
@@ -80,15 +84,16 @@ void pHSensor::refreshData() {
       _flag = true;
       _index = 0;
     }
+    return true;
   }
+  return false;
 }
 
 /***************************************************************************/
 /*read sensor value*/
 // first, sort rawData array to get median value, rawData[BUFFERSIZE/2]
 // next, using calculated offset and slope make a linear transformation
-// last, correct by temperature (if required)
-float pHSensor::read() {
+short pHSensor::read() {
   unsigned int temporal;
   for (int i = 0; i < BUFFERSIZE / 2 - 1; i++) {
     for (int j = i; j < BUFFERSIZE; j++) {
@@ -99,10 +104,8 @@ float pHSensor::read() {
       }
     }
   }
-  float pHValue = _offset + _slope * (_rawData[BUFFERSIZE / 2] - _calRaw1);
-  if (_temperature!=25.0) pHValue = pHValue; // adjust temperature correction
   _flag = false;
-  return pHValue;
+  return (_offset + _slope * (_rawData[BUFFERSIZE / 2] - _cal1.rawData));
 }
 
 /***************************************************************************/
