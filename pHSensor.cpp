@@ -1,7 +1,7 @@
 /**********************************************************************
  * pHSensor library
  * Arduino library to control a pH sensor usin an analog adapter
- * version 0.2 ALPHA 16/09/2015
+ * version 0.2 ALPHA 15/09/2015
  * Author: Jaime García  @peninquen
  * License: Apache License Version 2.0.
  *
@@ -18,10 +18,9 @@ pHSensor::pHSensor() {
 /***************************************************************************/
 /*Setup variables and initialize interrupts*/
 
-void pHSensor::begin(int pHPin, unsigned int interval, byte calAddress) {
+void pHSensor::begin(int pHPin, unsigned short interval, byte calAddress) {
   _pHPin = pHPin;
-  pinMode(_pHPin, INPUT);
-  _interval = interval;
+  pinMode(_pHPin, INPUT);  // analog input pin
   _flag = false;
   for (int i = 0; i < BUFFERSIZE; i++) _rawData[i] = 0;
   _index = 0;
@@ -30,18 +29,20 @@ void pHSensor::begin(int pHPin, unsigned int interval, byte calAddress) {
   calAddress += sizeof(calibration);
   EEPROM.get(calAddress, _cal2);
   if (_cal2.magicNumber != MAGIC_NUMBER) calibrate(calAddress, _cal2);
-  _offset = _cal1.reference; //7.00
-  _slope = (float)(_cal2.reference - _cal1.reference) / (_cal2.rawData - _cal1.rawData)  ;
+  _slope = (float)(_cal2.reference - _cal1.reference) / (_cal2.rawData - _cal1.rawData);
+  _offset = _cal1.reference - _slope * _cal1.rawData;
   _processTime = millis();       // start timer
+  _interval = interval; //interval during loop function
 
   Serial.print("pH Pin:"); Serial.print(_pHPin);
   Serial.print("  EEPROM address:"); Serial.println(calAddress);
 }
 
 /**************************************************************************/
-/*calibrate sensor*/
+/*calibrate sensor
+  first calculate average value of 64 median values;
+  second, use average to calculate standard deviation of the filtered and unfiltered readings*/
 calibration &pHSensor::calibrate(byte calAddress, calibration &cal) {
-  int i;
   unsigned short data;
   unsigned short StDev = 0;    //standard deviation of filtered data
   unsigned short rawStDev = 0; //standard deviation of unfiltered data
@@ -59,15 +60,20 @@ calibration &pHSensor::calibrate(byte calAddress, calibration &cal) {
   Serial.println(cal.rawData);
 
   for (int count = 64; count; --count) {
-    while (!_flag) {
-      while (!refreshData());
-      if (_index)
-        i = BUFFERSIZE;
-      else
-        i = _index - 1;
-      rawDev += (data - _rawData[i]) ^ 2;
+    for (int index = BUFFERSIZE; index; --index) {
+      _rawData[index] = analogRead(_pHPin);
+      rawDev += (cal.rawData - _rawData[_index]) ^ 2;
     }
-    Dev += (data - read()) ^ 2;
+    for (int i = 0; i < BUFFERSIZE / 2; i++) {
+      for (int j = i; j < BUFFERSIZE; j++) {
+        if (_rawData[i] > _rawData[j]) {
+          data = _rawData[i];
+          _rawData[i] = _rawData[j];
+          _rawData[j] = data;
+        }
+      }
+    }
+    Dev += (cal.rawData - _rawData[BUFFERSIZE / 2]) ^ 2;
   }
   StDev = sqrt(Dev >> 6);
   rawStDev = sqrt(rawDev / BUFFERSIZE / 64);
@@ -96,20 +102,20 @@ boolean pHSensor::refreshData() {
 /***************************************************************************/
 /*read sensor value*/
 // first, sort rawData array to get median value, rawData[BUFFERSIZE/2]
-// next, using calculated offset and slope make a linear transformation
+// next, make a linear transformation using calculated offset and slope
 short pHSensor::read() {
-  unsigned int temporal;
-  for (int i = 0; i < BUFFERSIZE / 2 - 1; i++) {
+  unsigned short data;
+  for (int i = 0; i < BUFFERSIZE / 2; i++) {
     for (int j = i; j < BUFFERSIZE; j++) {
       if (_rawData[i] > _rawData[j]) {
-        temporal = _rawData[i];
+        data = _rawData[i];
         _rawData[i] = _rawData[j];
-        _rawData[j] = temporal;
+        _rawData[j] = data;
       }
     }
   }
   _flag = false;
-  return (_offset + _slope * (_rawData[BUFFERSIZE / 2] - _cal1.rawData));
+  return (_offset + _slope * _rawData[BUFFERSIZE / 2]);
 }
 
 /***************************************************************************/
